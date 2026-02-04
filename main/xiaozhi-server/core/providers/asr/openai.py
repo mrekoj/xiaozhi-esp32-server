@@ -15,9 +15,15 @@ class ASRProvider(ASRProviderBase):
         self.interface_type = InterfaceType.NON_STREAM
         self.api_key = config.get("api_key")
         self.api_url = config.get("base_url")
-        self.model = config.get("model_name")        
+        self.model = config.get("model_name")
         self.output_dir = config.get("output_dir")
         self.delete_audio_file = delete_audio_file
+        # Optional: language hint (ISO-639-1 code: en, zh, vi, ko, ja, etc.)
+        # Leave empty for auto-detection (recommended for multilingual)
+        self.language = config.get("language", None)
+        # Optional: prompt to guide recognition (vocabulary, context, language hints)
+        # Example: "This conversation may include English, Vietnamese, Chinese, and Korean."
+        self.prompt = config.get("prompt", None)
 
         os.makedirs(self.output_dir, exist_ok=True)
 
@@ -36,10 +42,16 @@ class ASRProvider(ASRProviderBase):
                 "Authorization": f"Bearer {self.api_key}",
             }
             
-            # 使用data参数传递模型名称
+            # Build request data with model and optional parameters
             data = {
                 "model": self.model
             }
+            # Add language hint if specified (helps with accuracy for known language)
+            if self.language:
+                data["language"] = self.language
+            # Add prompt if specified (helps guide recognition with context/vocabulary)
+            if self.prompt:
+                data["prompt"] = self.prompt
 
 
             with open(file_path, "rb") as audio_file:  # 使用with语句确保文件关闭

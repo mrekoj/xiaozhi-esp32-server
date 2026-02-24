@@ -10,6 +10,9 @@ logger = setup_logging()
 
 
 class LLMProvider(LLMProviderBase):
+    # Models that require max_completion_tokens instead of max_tokens
+    COMPLETION_TOKEN_MODELS = ("o1", "o3", "gpt-5")
+
     def __init__(self, config):
         self.model_name = config.get("model_name")
         self.api_key = config.get("api_key")
@@ -47,6 +50,17 @@ class LLMProvider(LLMProviderBase):
             logger.bind(tag=TAG).error(model_key_msg)
         self.client = openai.OpenAI(api_key=self.api_key, base_url=self.base_url, timeout=httpx.Timeout(self.timeout))
 
+    def _uses_completion_tokens(self):
+        """Check if model requires max_completion_tokens instead of max_tokens"""
+        return self._is_new_model()
+
+    def _is_new_model(self):
+        """Check if model is a newer model (o1, o3, gpt-5) with different API requirements"""
+        if not self.model_name:
+            return False
+        model_lower = self.model_name.lower()
+        return any(model_lower.startswith(prefix) for prefix in self.COMPLETION_TOKEN_MODELS)
+
     @staticmethod
     def normalize_dialogue(dialogue):
         """自动修复 dialogue 中缺失 content 的消息"""
@@ -65,12 +79,20 @@ class LLMProvider(LLMProviderBase):
         }
 
         # 添加可选参数,只有当参数不为None时才添加
+        # Use max_completion_tokens for newer models (o1, o3, gpt-5), max_tokens for others
+        # Newer models don't support temperature, top_p, frequency_penalty
+        is_new_model = self._is_new_model()
+        max_tokens_key = "max_completion_tokens" if is_new_model else "max_tokens"
         optional_params = {
-            "max_tokens": kwargs.get("max_tokens", self.max_tokens),
-            "temperature": kwargs.get("temperature", self.temperature),
-            "top_p": kwargs.get("top_p", self.top_p),
-            "frequency_penalty": kwargs.get("frequency_penalty", self.frequency_penalty),
+            max_tokens_key: kwargs.get("max_tokens", self.max_tokens),
         }
+        # Only add sampling params for older models (gpt-4, gpt-3.5, etc.)
+        if not is_new_model:
+            optional_params.update({
+                "temperature": kwargs.get("temperature", self.temperature),
+                "top_p": kwargs.get("top_p", self.top_p),
+                "frequency_penalty": kwargs.get("frequency_penalty", self.frequency_penalty),
+            })
 
         for key, value in optional_params.items():
             if value is not None:
@@ -105,12 +127,20 @@ class LLMProvider(LLMProviderBase):
             "tools": functions,
         }
 
+        # Use max_completion_tokens for newer models (o1, o3, gpt-5), max_tokens for others
+        # Newer models don't support temperature, top_p, frequency_penalty
+        is_new_model = self._is_new_model()
+        max_tokens_key = "max_completion_tokens" if is_new_model else "max_tokens"
         optional_params = {
-            "max_tokens": kwargs.get("max_tokens", self.max_tokens),
-            "temperature": kwargs.get("temperature", self.temperature),
-            "top_p": kwargs.get("top_p", self.top_p),
-            "frequency_penalty": kwargs.get("frequency_penalty", self.frequency_penalty),
+            max_tokens_key: kwargs.get("max_tokens", self.max_tokens),
         }
+        # Only add sampling params for older models (gpt-4, gpt-3.5, etc.)
+        if not is_new_model:
+            optional_params.update({
+                "temperature": kwargs.get("temperature", self.temperature),
+                "top_p": kwargs.get("top_p", self.top_p),
+                "frequency_penalty": kwargs.get("frequency_penalty", self.frequency_penalty),
+            })
 
         for key, value in optional_params.items():
             if value is not None:
